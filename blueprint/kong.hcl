@@ -1,5 +1,31 @@
+template "kong-bootstrap" {
+    source = <<EOF
+#!/bin/bash -x
+
+curl -O -L https://releases.hashicorp.com/vault/1.11.3/vault_1.11.3_linux_arm64.zip
+unzip vault_1.11.3_linux_arm64.zip
+mv vault /usr/local/bin
+
+curl -O -L https://download.konghq.com/mesh-alpine/kuma-1.8.0-debian-arm64.tar.gz
+tar xvzf kuma-1.8.0-debian-arm64.tar.gz
+mv /kuma-1.8.0/bin/* /usr/local/bin
+
+export VAULT_TOKEN=$(vault write auth/approle/login role_id=@/kong/approle/role-id secret_id=@/kong/approle/role-secret-id -format=json | jq -r .auth.client_token)
+vault read kuma/creds/kong-role -format=json | jq -r .data.token > /kong/kuma-token-kong
+
+kuma-dp run --cp-address=https://kuma-cp.container.shipyard.run:5678 \
+    --dataplane-file=/config/kong-dp.yml \
+    --dataplane-var address=`hostname -I | awk '{print $1}'` \
+    --dataplane-token=$(cat /kong/kuma-token-kong) \
+    --ca-cert-file=/kuma/config/kuma_cp_ca.cert
+
+EOF
+
+destination = "${data("kuma_config/scripts")}/config-kuma-vault.sh"
+}
+
 container "kong" {
-    depends_on = ["module.kuma_cp"]
+    depends_on = ["module.kuma_cp", "template.kong-bootstrap"]
 
     network {
         name = "network.local"
@@ -65,28 +91,6 @@ container "kong" {
     }            
 }
 
-template "kong-bootstrap" {
-    source = <<EOF
-#!/bin/bash -x
-
-curl -O -L https://releases.hashicorp.com/vault/1.11.3/vault_1.11.3_linux_arm64.zip
-unzip vault_1.11.3_linux_arm64.zip
-mv vault /usr/local/bin
-
-curl -O -L https://download.konghq.com/mesh-alpine/kuma-1.8.0-debian-arm64.tar.gz
-tar xvzf kuma-1.8.0-debian-arm64.tar.gz
-mv /kuma-1.8.0/bin/* /usr/local/bin
-
-export VAULT_TOKEN=$(vault write auth/approle/login role_id=@/kuma/approle/kong-role.id secret_id=@/kuma/approle/kong-role.secret -format=json | jq -r .auth.client_token)
-vault read kuma/creds/kong-role -format=json | jq -r .data.token > /kuma/kuma-token-kong
-
-kuma-dp run --cp-address=https://kuma-cp.container.shipyard.run:5678 --dataplane-file=/kuma/dp-config/kong-dp.yml --dataplane-token-file=/kuma/kuma-token-kong --ca-cert-file=/kuma/config/kuma_cp_ca.cert
-
-EOF
-
-destination = "${data("kuma_config/scripts")}/config-kuma-vault.sh"
-}
-
 sidecar "kong-tools" {
     target = "container.kong"
 
@@ -94,11 +98,12 @@ sidecar "kong-tools" {
         name = "shipyardrun/tools:v0.7.0"
     }
 
-    command = ["tail", "-f", "/dev/null"]
+    //command = ["tail", "-f", "/dev/null"]
+    command = ["sh", "/kuma/scripts/config-kuma-vault.sh"]
 
     volume {
-        source      = "./configs/kong/kuma"
-        destination = "/kuma/dp-config"
+        source      = "./configs/kong"
+        destination = "/config"
     }
 
     volume {
@@ -108,7 +113,7 @@ sidecar "kong-tools" {
 
     volume {
         source      = data("/approles/kong")
-        destination = "/kuma/approle"
+        destination = "/kong/approle"
     }
 
     volume {

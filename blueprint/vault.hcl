@@ -20,7 +20,7 @@ variable "vault_bootstrap_script" {
 }
 
 template "vault-config-script" {
-  depends_on = ["template.vault-policy-kong"]
+  depends_on = ["template.vault-policy-kong", "template.vault-policy-backend"]
   source = <<EOF
 #!/bin/bash -x
 
@@ -40,6 +40,12 @@ vault write kuma/roles/kong-role \
   max_ttl=24h \
   tags="kuma.io/service=kong"
 
+vault write kuma/roles/backend-role \
+  token_name=backend \
+  mesh=default \
+  ttl=1h \
+  max_ttl=24h \
+  tags="kuma.io/service=backend"
 
 
 # App Role Config
@@ -54,9 +60,21 @@ vault write auth/approle/role/kong-role \
 
 vault policy write kong /config/vault/polices/kong.hcl
 
-vault read auth/approle/role/kong-role/role-id -format=json | jq -r .data.role_id >> /config/kong/approle/kong-role.id
+vault read auth/approle/role/kong-role/role-id -format=json | jq -r .data.role_id >> /config/kong/approle/role-id
 
-vault write -f auth/approle/role/kong-role/secret-id -format=json | jq -r .data.secret_id >> /config/kong/approle/kong-role.secret
+vault write -f auth/approle/role/kong-role/secret-id -format=json | jq -r .data.secret_id >> /config/kong/approle/role-secret-id
+
+vault write auth/approle/role/backend-role \
+  token_ttl=30m \
+  token_max_ttl=60m \
+  token_policies=default,backend \
+  bind_secret_id=true
+
+vault policy write backend /config/vault/polices/backend.hcl
+
+vault read auth/approle/role/backend-role/role-id -format=json | jq -r .data.role_id >> /config/backend/approle/role-id
+
+vault write -f auth/approle/role/backend-role/secret-id -format=json | jq -r .data.secret_id >> /config/backend/approle/role-secret-id
 
 EOF
 destination = "${data("vault_config/scripts")}/config-kuma-vault.sh"
@@ -69,6 +87,15 @@ path "kuma/creds/kong-role" {
 }
 EOF
 destination = "${data("vault_config/policies")}/kong.hcl"
+}
+
+template "vault-policy-backend" {
+  source = <<EOF
+path "kuma/creds/backend-role" {
+  capabilities = ["read"]
+}
+EOF
+destination = "${data("vault_config/policies")}/backend.hcl"
 }
 
 exec_remote "vault_kuma_plugin_configure" {
@@ -101,6 +128,11 @@ exec_remote "vault_kuma_plugin_configure" {
     volume {
         source      = data("/approles/kong")
         destination = "/config/kong/approle"
+    }
+
+        volume {
+        source      = data("/approles/backend")
+        destination = "/config/backend/approle"
     }
 
     env {
@@ -159,6 +191,11 @@ container "vault_kuma_plugin_configure" {
     volume {
         source      = data("/approles/kong")
         destination = "/config/kong/approle"
+    }
+
+        volume {
+        source      = data("/approles/backend")
+        destination = "/config/backend/approle"
     }
 
     env {

@@ -1,0 +1,13 @@
+type: Dataplane
+mesh: default
+name: kong
+networking:
+  address: {{ address }}
+  gateway:
+    type: DELEGATED
+    tags:
+      kuma.io/service: kong
+  outbound:
+  - port: 39090
+    tags:
+      kuma.io/service: backend
