@@ -20,7 +20,7 @@ variable "vault_bootstrap_script" {
 }
 
 template "vault-config-script" {
-  depends_on = ["template.vault-policy-kong", "template.vault-policy-backend"]
+  depends_on = ["template.vault-policy-kong", "template.vault-policy-api"]
   source = <<EOF
 #!/bin/bash -x
 
@@ -40,12 +40,12 @@ vault write kuma/roles/kong-role \
   max_ttl=24h \
   tags="kuma.io/service=kong"
 
-vault write kuma/roles/backend-role \
-  token_name=backend \
+vault write kuma/roles/api-role \
+  token_name=api \
   mesh=default \
   ttl=1h \
   max_ttl=24h \
-  tags="kuma.io/service=backend"
+  tags="kuma.io/service=api"
 
 vault write kuma/roles/database-role \
   token_name=database \
@@ -71,17 +71,17 @@ vault read auth/approle/role/kong-role/role-id -format=json | jq -r .data.role_i
 
 vault write -f auth/approle/role/kong-role/secret-id -format=json | jq -r .data.secret_id >> /config/kong/approle/secretid
 
-vault write auth/approle/role/backend-role \
+vault write auth/approle/role/api-role \
   token_ttl=30m \
   token_max_ttl=60m \
-  token_policies=default,backend \
+  token_policies=default,api \
   bind_secret_id=true
 
-vault policy write backend /config/vault/polices/backend.hcl
+vault policy write api /config/vault/polices/api.hcl
 
-vault read auth/approle/role/backend-role/role-id -format=json | jq -r .data.role_id >> /config/backend/approle/roleid
+vault read auth/approle/role/api-role/role-id -format=json | jq -r .data.role_id >> /config/api/approle/roleid
 
-vault write -f auth/approle/role/backend-role/secret-id -format=json | jq -r .data.secret_id >> /config/backend/approle/secretid
+vault write -f auth/approle/role/api-role/secret-id -format=json | jq -r .data.secret_id >> /config/api/approle/secretid
 
 vault write auth/approle/role/database-role \
   token_ttl=30m \
@@ -108,13 +108,13 @@ EOF
 destination = "${data("vault_config/policies")}/kong.hcl"
 }
 
-template "vault-policy-backend" {
+template "vault-policy-api" {
   source = <<EOF
-path "kuma/creds/backend-role" {
+path "kuma/creds/api-role" {
   capabilities = ["read"]
 }
 EOF
-destination = "${data("vault_config/policies")}/backend.hcl"
+destination = "${data("vault_config/policies")}/api.hcl"
 }
 
 template "vault-policy-database" {
@@ -130,7 +130,7 @@ exec_remote "vault_kuma_plugin_configure" {
     depends_on = ["module.kuma_cp", "module.vault", "template.vault-config-script"]
 
     image {
-        name = "hashicorp/vault:1.10.3"
+        name = "hashicorp/vault:1.11.3"
     }
 
     cmd = "sh"
@@ -159,8 +159,8 @@ exec_remote "vault_kuma_plugin_configure" {
     }
 
     volume {
-        source      = data("/approles/backend")
-        destination = "/config/backend/approle"
+        source      = data("/approles/api")
+        destination = "/config/api/approle"
     }
 
     volume {
@@ -188,67 +188,3 @@ exec_remote "vault_kuma_plugin_configure" {
         name = "network.local"
   }
 }
-
-/*
-container "vault_kuma_plugin_configure" {
-    depends_on = ["module.kuma_cp", "module.vault"]
-
-    image {
-        name = "hashicorp/vault:1.10.3"
-    }
-
-    entrypoint = [""]
-
-    command = [
-      "tail",
-      "-f",
-      "/dev/null"
-    ]
-
-    volume {
-        source      = data("/kuma_config")
-        destination = "/config/kuma"
-    }
-
-    volume {
-        source      = data("/vault_config/policies")
-        destination = "/config/vault/polices"
-    }
-
-    volume {
-        source      = data("/vault_config/scripts")
-        destination = "/config/vault/scripts"
-    }
-
-    volume {
-        source      = data("/approles/kong")
-        destination = "/config/kong/approle"
-    }
-
-        volume {
-        source      = data("/approles/backend")
-        destination = "/config/backend/approle"
-    }
-
-    env {
-        key   = "VAULT_ADDR"
-        value = "http://vault.container.shipyard.run:8200"
-    }
-    env {
-        key   = "VAULT_TOKEN"
-        value = "root"
-    }
-    env {
-        key   = "KUMA_URL"
-        value = "http://kuma-cp.container.shipyard.run:5681"
-    }
-    env {
-        key   = "KUMA_TOKEN"
-        value = "/config/kuma/admin.token"
-    }
-
-    network {
-        name = "network.local"
-  }
-}
-*/

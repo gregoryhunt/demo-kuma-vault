@@ -1,78 +1,47 @@
-template "kong-bootstrap" {
-    source = <<EOF
-#!/bin/bash -x
-
-curl -O -L https://releases.hashicorp.com/vault/1.11.3/vault_1.11.3_linux_arm64.zip
-unzip vault_1.11.3_linux_arm64.zip
-mv vault /usr/local/bin
-
-curl -O -L https://download.konghq.com/mesh-alpine/kuma-1.8.0-debian-arm64.tar.gz
-tar xvzf kuma-1.8.0-debian-arm64.tar.gz
-mv /kuma-1.8.0/bin/* /usr/local/bin
-
-export VAULT_TOKEN=$(vault write auth/approle/login role_id=@/kong/approle/roleid secret_id=@/kong/approle/secretid -format=json | jq -r .auth.client_token)
-vault read kuma/creds/kong-role -format=json | jq -r .data.token > /kong/kuma-token-kong
-
-kuma-dp run --cp-address=https://kuma-cp.container.shipyard.run:5678 \
-    --dataplane-file=/config/kong-dp.yml \
-    --dataplane-var address=`hostname -I | awk '{print $1}'` \
-    --dataplane-token=$(cat /kong/kuma-token-kong) \
-    --ca-cert-file=/kuma/config/kuma_cp_ca.cert
-
-EOF
-
-destination = "${data("kuma_config/scripts")}/config-kuma-vault.sh"
-}
-
 container "kong" {
-    depends_on = ["module.kuma_cp", "template.kong-bootstrap"]
+    depends_on = ["module.kuma_cp", "exec_remote.vault_kuma_plugin_configure"]
 
     network {
         name = "network.local"
     }
 
     image {
-        name = "kong:2.8.1-alpine"
+        name = "gregoryhunt/kuma-dp-vault-kong:v0.1.3"
     }
 
     volume {
-        source      = "./configs/kong/"
+        source      = "./configs/kong/kong"
         destination = "/kong/declarative/"
     }
+    volume {
+        source      = "./configs/kong/kuma"
+        destination = "/config"
+    }
 
-    env {
-        key = "KONG_DATABASE"
-        value = "off"
+    volume {
+        source      = data("kuma_config")
+        destination = "/kuma/config"
+    }
+
+    volume {
+        source      = data("/approles/kong")
+        destination = "/etc/vault/approle"
+    }
+
+    volume {
+        source      = data("vault/agent/kong")
+        destination = "/etc/vault"
     }
     env {
-        key = "KONG_DECLARATIVE_CONFIG"
-        value = "/kong/declarative/kong.yml"
+        key   = "VAULT_ADDR"
+        value = "http://vault.container.shipyard.run:8200"
     }
-    env {
-        key = "KONG_PROXY_ACCESS_LOG"
-        value = "/dev/stdout"
-    }
-    env {
-        key = "KONG_ADMIN_ACCESS_LOG"
-        value = "/dev/stdout"
-    }
-    env {
-        key = "KONG_PROXY_ERROR_LOG"
-        value = "/dev/stderr"
-    }
-    env {
-        key = "KONG_ADMIN_ERROR_LOG"
-        value = "/dev/stderr"
-    }
-    env {
-        key = "KONG_ADMIN_LISTEN"
-        value = "0.0.0.0:8001, 0.0.0.0:8444 ssl"
-    }
-  
+
     port {
         local = 8000
         remote = 8000
         host = 8000       
+        open_in_browser = "/ui"
     }
     port {
         local = 8443
@@ -88,42 +57,32 @@ container "kong" {
         local = 8444
         remote = 8444
         host = 8444       
-    }            
+    }
+
 }
 
-sidecar "kong-tools" {
-    target = "container.kong"
+template "kong-vault-agent-config" {
+    source = <<EOF
+pid_file = "./pidfile"
 
-    image {
-        name = "shipyardrun/tools:v0.7.0"
+auto_auth {
+    method {
+        type = "approle"
+
+        config = {
+            role_id_file_path = "/etc/vault/approle/roleid"
+            secret_id_file_path = "/etc/vault/approle/secretid"
+            remove_secret_id_file_after_reading = false
+        }
     }
+}
 
-    //command = ["tail", "-f", "/dev/null"]
-    command = ["sh", "/kuma/scripts/config-kuma-vault.sh"]
+template {
+    contents     = "{{ with secret \"kuma/creds/kong-role\" }}{{ .Data.token }}{{ end }}"
+    destination  = "/etc/vault/kuma-dataplane-token"
+}   
 
-    volume {
-        source      = "./configs/kong"
-        destination = "/config"
-    }
+EOF
 
-    volume {
-        source      = data("kuma_config")
-        destination = "/kuma/config"
-    }
-
-    volume {
-        source      = data("/approles/kong")
-        destination = "/kong/approle"
-    }
-
-    volume {
-        source      = data("kuma_config/scripts")
-        destination = "/kuma/scripts"
-    }    
-
-    env {
-        key   = "VAULT_ADDR"
-        value = "http://vault.container.shipyard.run:8200"
-    }
-
+    destination = "${data("vault/agent/kong")}/agent-config.hcl"
 }

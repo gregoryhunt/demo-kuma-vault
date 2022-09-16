@@ -17,26 +17,3 @@ copy "ca" {
   source      = "${data("kuma_config")}/kuma_cp_ca.cert"
   destination = "${data("kuma_dp")}/ca.cert"
 }
-
-container "kuma_dp" {
-  image {
-    name = "kumahq/kuma-dp:1.8.0"
-  }
-
-  entrypoint = [""]
-
-  command = [
-    "tail",
-    "-f",
-    "/dev/null"
-  ]
-
-  volume {
-    destination = "/configs"
-    source      = data("kuma_dp")
-  }
-
-  network {
-    name = "network.local"
-  }
-}

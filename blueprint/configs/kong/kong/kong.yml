@@ -1,0 +1,12 @@
+_format_version: "1.1"
+_transform: true
+
+services:
+- host: localhost
+  name: api
+  port: 39090
+  protocol: http
+  routes:
+  - name: api_route
+    paths:
+    - /

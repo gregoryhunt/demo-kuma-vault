@@ -10,4 +10,4 @@ networking:
   outbound:
   - port: 39090
     tags:
-      kuma.io/service: backend
+      kuma.io/service: api

@@ -1,68 +1,16 @@
-template "backend-bootstrap" {
-    source = <<EOF
-#!/bin/bash -x
-
-curl -O -L https://releases.hashicorp.com/vault/1.11.3/vault_1.11.3_linux_arm64.zip
-unzip vault_1.11.3_linux_arm64.zip
-mv vault /usr/local/bin
-
-curl -O -L https://download.konghq.com/mesh-alpine/kuma-1.8.0-debian-arm64.tar.gz
-tar xvzf kuma-1.8.0-debian-arm64.tar.gz
-mv /kuma-1.8.0/bin/* /usr/local/bin
-
-export VAULT_TOKEN=$(vault write auth/approle/login role_id=@/backend/approle/roleid secret_id=@/backend/approle/secretid -format=json | jq -r .auth.client_token)
-vault read kuma/creds/backend-role -format=json | jq -r .data.token > /backend/kuma-token-backend
-
-kuma-dp run --cp-address=https://kuma-cp.container.shipyard.run:5678 \
-    --dataplane-file=/config/backend-dp.yml \
-    --dataplane-var address=`hostname -I | awk '{print $1}'` \
-    --dataplane-token=$(cat /backend/kuma-token-backend) \
-    --ca-cert-file=/kuma/config/kuma_cp_ca.cert
-
-EOF
-
-destination = "${data("kuma_config/scripts")}/join-dataplane-backend.sh"
-}
-
-container "backend" {
-    depends_on = ["module.kuma_cp", "template.backend-bootstrap"]
+container "api" {
+    depends_on = ["module.kuma_cp", "exec_remote.vault_kuma_plugin_configure"]
 
     network {
         name = "network.local"
     }
 
     image {
-        name = "nicholasjackson/fake-service:v0.24.2"
+        name = "gregoryhunt/kuma-dp-vault:v0.1.3"
     }
-
-    env {
-        key = "LISTEN_ADDR:127.0.0.1:9090"
-        value = "off"
-    }
-    env {
-        key = "NAME"
-        value = "Backend"
-    }
-
-    port {
-        local = 9090
-        remote = 9090
-        host = 9090       
-    }         
-}
-
-sidecar "backend-tools" {
-    target = "container.backend"
-
-    image {
-        name = "shipyardrun/tools:v0.7.0"
-    }
-
-    //command = ["tail", "-f", "/dev/null"]
-    command = ["sh", "/kuma/scripts/join-dataplane-backend.sh"]
 
     volume {
-        source      = "./configs/backend"
+        source      = "./configs/api"
         destination = "/config"
     }
 
@@ -72,18 +20,63 @@ sidecar "backend-tools" {
     }
 
     volume {
-        source      = data("/approles/backend")
-        destination = "/backend/approle"
+        source      = data("/approles/api")
+        destination = "/etc/vault/approle"
     }
 
     volume {
-        source      = data("kuma_config/scripts")
-        destination = "/kuma/scripts"
-    }    
-
+        source      = data("vault/agent/api")
+        destination = "/etc/vault"
+    }
     env {
         key   = "VAULT_ADDR"
         value = "http://vault.container.shipyard.run:8200"
     }
 
+    env {
+        key = "LISTEN_ADDR"
+        value = "127.0.0.1:9090"
+    }
+    
+    env {
+        key = "UPSTREAM_URIS"
+        value = "localhost:39091"
+    }
+
+    env {
+        key = "NAME"
+        value = "api"
+    }
+
+    port {
+        local = 9090
+        remote = 9090
+        host = 9090       
+    }         
+}
+
+template "api-vault-agent-config" {
+    source = <<EOF
+pid_file = "./pidfile"
+
+auto_auth {
+    method {
+        type = "approle"
+
+        config = {
+            role_id_file_path = "/etc/vault/approle/roleid"
+            secret_id_file_path = "/etc/vault/approle/secretid"
+            remove_secret_id_file_after_reading = false
+        }
+    }
+}
+
+template {
+    contents     = "{{ with secret \"kuma/creds/api-role\" }}{{ .Data.token }}{{ end }}"
+    destination  = "/etc/vault/kuma-dataplane-token"
+}   
+
+EOF
+
+    destination = "${data("vault/agent/api")}/agent-config.hcl"
 }
