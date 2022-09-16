@@ -90,11 +90,16 @@ auto_auth {
             secret_id_file_path = "/etc/vault/approle/secretid"
         }
     }
-    template {
-        contents     = "{{ with secret \"kuma/creds/database-role\" }}{{ .Data.token }}{{ end }}"
-        destination  = "/etc/vault/kuma-dataplane-token"
-    }
-}    
+}
+
+cache {
+    use_auto_auth_token = true
+}
+
+template {
+    contents     = "{{ with secret \"kuma/creds/database-role\" }}{{ .Data.token }}{{ end }}"
+    destination  = "/etc/vault/kuma-dataplane-token"
+}   
 
 EOF
 
