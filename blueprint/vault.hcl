@@ -47,6 +47,13 @@ vault write kuma/roles/backend-role \
   max_ttl=24h \
   tags="kuma.io/service=backend"
 
+vault write kuma/roles/database-role \
+  token_name=database \
+  mesh=default \
+  ttl=1h \
+  max_ttl=24h \
+  tags="kuma.io/service=database"
+
 
 # App Role Config
 
@@ -60,9 +67,9 @@ vault write auth/approle/role/kong-role \
 
 vault policy write kong /config/vault/polices/kong.hcl
 
-vault read auth/approle/role/kong-role/role-id -format=json | jq -r .data.role_id >> /config/kong/approle/role-id
+vault read auth/approle/role/kong-role/role-id -format=json | jq -r .data.role_id >> /config/kong/approle/roleid
 
-vault write -f auth/approle/role/kong-role/secret-id -format=json | jq -r .data.secret_id >> /config/kong/approle/role-secret-id
+vault write -f auth/approle/role/kong-role/secret-id -format=json | jq -r .data.secret_id >> /config/kong/approle/secretid
 
 vault write auth/approle/role/backend-role \
   token_ttl=30m \
@@ -72,9 +79,21 @@ vault write auth/approle/role/backend-role \
 
 vault policy write backend /config/vault/polices/backend.hcl
 
-vault read auth/approle/role/backend-role/role-id -format=json | jq -r .data.role_id >> /config/backend/approle/role-id
+vault read auth/approle/role/backend-role/role-id -format=json | jq -r .data.role_id >> /config/backend/approle/roleid
 
-vault write -f auth/approle/role/backend-role/secret-id -format=json | jq -r .data.secret_id >> /config/backend/approle/role-secret-id
+vault write -f auth/approle/role/backend-role/secret-id -format=json | jq -r .data.secret_id >> /config/backend/approle/secretid
+
+vault write auth/approle/role/database-role \
+  token_ttl=30m \
+  token_max_ttl=60m \
+  token_policies=default,database \
+  bind_secret_id=true
+
+vault policy write database /config/vault/polices/database.hcl
+
+vault read auth/approle/role/database-role/role-id -format=json | jq -r .data.role_id >> /config/database/approle/roleid
+
+vault write -f auth/approle/role/database-role/secret-id -format=json | jq -r .data.secret_id >> /config/database/approle/secretid
 
 EOF
 destination = "${data("vault_config/scripts")}/config-kuma-vault.sh"
@@ -96,6 +115,15 @@ path "kuma/creds/backend-role" {
 }
 EOF
 destination = "${data("vault_config/policies")}/backend.hcl"
+}
+
+template "vault-policy-database" {
+  source = <<EOF
+path "kuma/creds/database-role" {
+  capabilities = ["read"]
+}
+EOF
+destination = "${data("vault_config/policies")}/database.hcl"
 }
 
 exec_remote "vault_kuma_plugin_configure" {
@@ -130,11 +158,15 @@ exec_remote "vault_kuma_plugin_configure" {
         destination = "/config/kong/approle"
     }
 
-        volume {
+    volume {
         source      = data("/approles/backend")
         destination = "/config/backend/approle"
     }
 
+    volume {
+        source      = data("/approles/database")
+        destination = "/config/database/approle"
+    }
     env {
         key   = "VAULT_ADDR"
         value = "http://vault.container.shipyard.run:8200"

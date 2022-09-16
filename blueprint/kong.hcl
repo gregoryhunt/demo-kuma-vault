@@ -10,7 +10,7 @@ curl -O -L https://download.konghq.com/mesh-alpine/kuma-1.8.0-debian-arm64.tar.g
 tar xvzf kuma-1.8.0-debian-arm64.tar.gz
 mv /kuma-1.8.0/bin/* /usr/local/bin
 
-export VAULT_TOKEN=$(vault write auth/approle/login role_id=@/kong/approle/role-id secret_id=@/kong/approle/role-secret-id -format=json | jq -r .auth.client_token)
+export VAULT_TOKEN=$(vault write auth/approle/login role_id=@/kong/approle/roleid secret_id=@/kong/approle/secretid -format=json | jq -r .auth.client_token)
 vault read kuma/creds/kong-role -format=json | jq -r .data.token > /kong/kuma-token-kong
 
 kuma-dp run --cp-address=https://kuma-cp.container.shipyard.run:5678 \

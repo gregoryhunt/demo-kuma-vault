@@ -1,3 +1,4 @@
+/*
 template "backend-bootstrap" {
     source = <<EOF
 #!/bin/bash -x
@@ -23,46 +24,20 @@ EOF
 
 destination = "${data("kuma_config/scripts")}/join-dataplane-backend.sh"
 }
-
-container "backend" {
-    depends_on = ["module.kuma_cp", "template.backend-bootstrap"]
+*/
+container "database" {
+    depends_on = ["module.kuma_cp"]
 
     network {
         name = "network.local"
     }
 
     image {
-        name = "nicholasjackson/fake-service:v0.24.2"
+        name = "gregoryhunt/kuma-dp-vault:v0.1.0"
     }
-
-    env {
-        key = "LISTEN_ADDR:127.0.0.1:9090"
-        value = "off"
-    }
-    env {
-        key = "NAME"
-        value = "Backend"
-    }
-
-    port {
-        local = 9090
-        remote = 9090
-        host = 9090       
-    }         
-}
-
-sidecar "backend-tools" {
-    target = "container.backend"
-
-    image {
-        name = "shipyardrun/tools:v0.7.0"
-    }
-
-    //command = ["tail", "-f", "/dev/null"]
-    command = ["sh", "/kuma/scripts/join-dataplane-backend.sh"]
 
     volume {
-        source      = "./configs/backend"
+        source      = "./configs/database"
         destination = "/config"
     }
 
@@ -72,18 +47,56 @@ sidecar "backend-tools" {
     }
 
     volume {
-        source      = data("/approles/backend")
-        destination = "/backend/approle"
+        source      = data("/approles/database")
+        destination = "/etc/vault/approle"
     }
 
     volume {
-        source      = data("kuma_config/scripts")
-        destination = "/kuma/scripts"
-    }    
-
+        source      = data("vault/agent/database")
+        destination = "/etc/vault"
+    }
     env {
         key   = "VAULT_ADDR"
         value = "http://vault.container.shipyard.run:8200"
     }
 
+    env {
+        key = "LISTEN_ADDR:127.0.0.1:9091"
+        value = "off"
+    }
+    env {
+        key = "NAME"
+        value = "Database"
+    }
+
+    port {
+        local = 9091
+        remote = 9091
+        host = 9091       
+    }         
+}
+
+template "database-vault-agent-config" {
+    source = <<EOF
+exit_after_auth = true
+pid_file = "./pidfile"
+
+auto_auth {
+    method {
+        type = "approle"
+
+        config = {
+            role_id_file_path = "/etc/vault/approle/roleid"
+            secret_id_file_path = "/etc/vault/approle/secretid"
+        }
+    }
+    template {
+        contents     = "{{ with secret \"kuma/creds/database-role\" }}{{ .Data.token }}{{ end }}"
+        destination  = "/etc/vault/kuma-dataplane-token"
+    }
+}    
+
+EOF
+
+    destination = "${data("vault/agent/database")}/agent-config.hcl"
 }
