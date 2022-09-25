@@ -54,6 +54,12 @@ vault write kuma/roles/database-role \
   max_ttl=24h \
   tags="kuma.io/service=database"
 
+vault write kuma/roles/kuma-admin-role \
+  token_name=jerry \
+  mesh=default \
+  ttl=1h \
+  max_ttl=24h \
+  groups="mesh-system:admin"
 
 # App Role Config
 
@@ -95,6 +101,16 @@ vault read auth/approle/role/database-role/role-id -format=json | jq -r .data.ro
 
 vault write -f auth/approle/role/database-role/secret-id -format=json | jq -r .data.secret_id >> /config/database/approle/secretid
 
+# App Role Config
+
+vault auth enable userpass
+
+vault write auth/userpass/users/jerry \
+  password=secret123 \
+  policies=kuma-admins
+
+vault policy write kuma-admins /config/vault/polices/kuma_admin.hcl
+
 EOF
 destination = "${data("vault_config/scripts")}/config-kuma-vault.sh"
 }
@@ -124,6 +140,15 @@ path "kuma/creds/database-role" {
 }
 EOF
 destination = "${data("vault_config/policies")}/database.hcl"
+}
+
+template "vault-policy-kuma-admins" {
+  source = <<EOF
+path "kuma/creds/kuma-admin-role" {
+  capabilities = ["read"]
+}
+EOF
+destination = "${data("vault_config/policies")}/kuma_admin.hcl"
 }
 
 exec_remote "vault_kuma_plugin_configure" {
