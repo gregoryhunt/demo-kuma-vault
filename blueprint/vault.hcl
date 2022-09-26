@@ -1,14 +1,10 @@
 module "vault" {
-  source = "github.com/shipyard-run/blueprints?ref=144a4b75e44a8471d1f9b30d6f8a30c8d9e05e7e/modules//vault-dev"
+  source = "/home/nicj/go/src/github.com/shipyard-run/blueprints/modules/vault-dev"
+  #source = "github.com/shipyard-run/blueprints?ref=144a4b75e44a8471d1f9b30d6f8a30c8d9e05e7e/modules//vault-dev"
 }
 
 variable "vault_network" {
   default = "local"
-}
-
-variable "vault_plugin_folder" {
-  default     = "${file_dir()}/plugins"
-  description = "Folder where vault will load custom plugins"
 }
 
 variable "vault_bootstrap_script" {
@@ -19,8 +15,67 @@ variable "vault_bootstrap_script" {
   EOF
 }
 
+variable "vault_additional_volume" {
+  description = "Additional volume to mount to the vault server"
+
+  default = {
+    name        = "custom_plugins"
+    source      = "${file_dir()}/plugins"
+    destination = "/custom_plugins"
+    type        = "bind"
+  }
+}
+
+template "download_plugins" {
+  source = <<-EOF
+    #!/bin/sh
+
+    ARCH=$(uname -m)
+    if [ "$${ARCH}" == "x86_64" ]; then
+      ARCH="amd64"
+    else
+      ARCH="arm64"
+    fi
+
+    if [ -f "/plugins/vault-plugin-kuma-linux-$${ARCH}" ]; then
+      return
+    fi
+
+    curl -s -L https://github.com/gregoryhunt/vault-plugin-kuma/releases/download/v0.0.2/vault-plugin-kuma-linux-$${ARCH}-0.0.2.zip -o /plugins/plugin.zip
+    cd /plugins && unzip ./plugin.zip
+    mv /plugins/artifacts/vault-plugin-kuma-linux-$${ARCH} /plugins/vault-plugin-kuma-linux-$${ARCH}
+    rm -rf /plugins/artifacts
+    rm -rf /plugins/plugin.zip
+  EOF
+
+  destination = "${data("vault_config/scripts")}/download-plugins.sh"
+}
+
+exec_remote "download_plugins" {
+    image {
+        name = "alpine/curl:3.14"
+    }
+
+    cmd = "sh"
+    args = [
+      "/config/scripts/download-plugins.sh"
+    ]
+
+    volume {
+      source      = data("/vault_config")
+      destination = "/config"
+    }
+    
+    volume {
+      source      = var.vault_additional_volume.source
+      destination = "/plugins"
+    }
+}
+
 template "vault-config-script" {
   depends_on = ["template.vault-policy-kong", "template.vault-policy-api"]
+  disabled = var.enable_guide
+
   source = <<EOF
 #!/bin/bash -x
 
@@ -153,6 +208,7 @@ destination = "${data("vault_config/policies")}/kuma_admin.hcl"
 
 exec_remote "vault_kuma_plugin_configure" {
     depends_on = ["module.kuma_cp", "module.vault", "template.vault-config-script"]
+    disabled = var.enable_guide
 
     image {
         name = "hashicorp/vault:1.11.3"
