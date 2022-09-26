@@ -116,4 +116,12 @@ have access to this policy.
 VAULT_TOKEN=<your_token> vault write kuma-guide/creds/api-role
 ```
 
+## TODO
+
+* Show how to compose Vault Template
+* Show how to run Vault Template
+* Start dataplane using the provided token
+
+That is all for data plane tokens, let's look at how Vault managed token expiry.
+
 <p style={{height: '400px'}}></p>
