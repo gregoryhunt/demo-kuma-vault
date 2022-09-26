@@ -1,6 +1,6 @@
 module "vault" {
-  source = "/home/nicj/go/src/github.com/shipyard-run/blueprints/modules/vault-dev"
-  #source = "github.com/shipyard-run/blueprints?ref=144a4b75e44a8471d1f9b30d6f8a30c8d9e05e7e/modules//vault-dev"
+  #source = "/home/nicj/go/src/github.com/shipyard-run/blueprints/modules/vault-dev"
+  source = "github.com/shipyard-run/blueprints?ref=144a4b75e44a8471d1f9b30d6f8a30c8d9e05e7e/modules//vault-dev"
 }
 
 variable "vault_network" {
@@ -15,15 +15,9 @@ variable "vault_bootstrap_script" {
   EOF
 }
 
-variable "vault_additional_volume" {
-  description = "Additional volume to mount to the vault server"
-
-  default = {
-    name        = "custom_plugins"
-    source      = "${file_dir()}/plugins"
-    destination = "/custom_plugins"
-    type        = "bind"
-  }
+variable "vault_plugin_folder" {
+  default     = "${file_dir()}/plugins"
+  description = "Folder where vault will load custom plugins"
 }
 
 template "download_plugins" {
@@ -46,6 +40,7 @@ template "download_plugins" {
     mv /plugins/artifacts/vault-plugin-kuma-linux-$${ARCH} /plugins/vault-plugin-kuma-linux-$${ARCH}
     rm -rf /plugins/artifacts
     rm -rf /plugins/plugin.zip
+    chmod +x /plugins/vault-plugin-kuma-linux-$${ARCH}
   EOF
 
   destination = "${data("vault_config/scripts")}/download-plugins.sh"
@@ -67,14 +62,13 @@ exec_remote "download_plugins" {
     }
     
     volume {
-      source      = var.vault_additional_volume.source
+      source      = var.vault_plugin_folder
       destination = "/plugins"
     }
 }
 
 template "vault-config-script" {
   depends_on = ["template.vault-policy-kong", "template.vault-policy-api"]
-  disabled = var.enable_guide
 
   source = <<EOF
 #!/bin/bash -x
@@ -206,13 +200,73 @@ EOF
 destination = "${data("vault_config/policies")}/kuma_admin.hcl"
 }
 
-exec_remote "vault_kuma_plugin_configure" {
+container "vault_client" {
     depends_on = ["module.kuma_cp", "module.vault", "template.vault-config-script"]
-    disabled = var.enable_guide
 
     image {
         name = "hashicorp/vault:1.11.3"
     }
+
+    command = [
+        "tail", "-f", "/dev/null"
+    ]
+
+    volume {
+        source      = data("/kuma_config")
+        destination = "/config/kuma"
+    }
+
+    volume {
+        source      = data("/vault_config/policies")
+        destination = "/config/vault/polices"
+    }
+
+    volume {
+        source      = data("/vault_config/scripts")
+        destination = "/config/vault/scripts"
+    }
+
+    volume {
+        source      = data("/approles/kong")
+        destination = "/config/kong/approle"
+    }
+
+    volume {
+        source      = data("/approles/api")
+        destination = "/config/api/approle"
+    }
+
+    volume {
+        source      = data("/approles/database")
+        destination = "/config/database/approle"
+    }
+    env {
+        key   = "VAULT_ADDR"
+        value = "http://vault.container.shipyard.run:8200"
+    }
+    env {
+        key   = "VAULT_TOKEN"
+        value = "root"
+    }
+    env {
+        key   = "KUMA_URL"
+        value = "http://kuma-cp.container.shipyard.run:5681"
+    }
+    env {
+        key   = "KUMA_TOKEN"
+        value = "/config/kuma/admin.token"
+    }
+
+    network {
+        name = "network.local"
+  }
+}
+
+exec_remote "vault_kuma_plugin_configure" {
+    depends_on = ["module.kuma_cp", "module.vault", "template.vault-config-script"]
+    disabled = var.enable_guide
+    
+    target = "container.vault_client"
 
     cmd = "sh"
     args = [
