@@ -12,5 +12,6 @@ docs "docs" {
 
   index_pages = [
     "installing",
+    "registration",
   ]
 }
