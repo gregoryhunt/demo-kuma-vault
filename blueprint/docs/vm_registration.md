@@ -84,10 +84,17 @@ Now you can register this policy file with Vault
 vault policy write payments ./payments_policy.hcl
 ```
 
-Let's manually test the policy
+Let's manually test the policy, we can use the AppRole credentials that have already been provisioned to the Payments service
+to test the login
 
 ```
-vault token create -policy=payments -policy=default
+vault write auth/approle/login \
+   role_id=$(cat /etc/vault/approle/roleid)  \
+   secret_id=$(cat /etc/vault/approle/secretid)
+```
+
+```
+
 ```
 
 ```
@@ -106,22 +113,100 @@ You can grab the token returned from the previous command and use it like so to 
 Kuma token for the payments service.
 
 ```
-VAULT_TOKEN=<your_token> vault write kuma-guide/creds/payments-role
+export VAULT_TOKEN=$(vault write --format=json auth/approle/login role_id=$(cat /etc/vault/approle/roleid) secret_id=$(cat /etc/vault/approle/secretid) | jq -r .auth.client_token)
+```
+
+```
+vault read kuma-guide/creds/payments-role
+```
+
+```
+Key                Value
+---                -----
+lease_id           kuma-guide/creds/payments-role/6ootjdXQDLDHS70ftMl9IEWn
+lease_duration     1h
+lease_renewable    true
+token              eyJhbGciOiJSUzI1NiIsImtpZCI6IjEiLCJ0eXAiOiJKV1QifQ.eyJOYW1lIjoicGF5bWVudHMiLCJNZXNoIjoiZGVmYXVsdCIsIlRhZ3MiOnsia3VtYS5pby9zZXJ2aWNlIjpbInBheW1lbnRzIl19LCJUeXBlIjoiZGF0YXBsYW5lIiwiZXhwIjoxNjY0MzYxNTc5LCJuYmYiOjE2NjQyNzQ4NzksImlhdCI6MTY2NDI3NTE3OSwianRpIjoiZjU2Yzc5MjktZjIwYy00MDJlLTlhZGItNzkyMWM3NDY4ZTUyIn0.kyfzIJSxsBj8q-0Zm7WZO1ge6CEyPss7LgMILxFonAqZnlnXYg9hg-2U43j5_7EXldhvC0bMAYVA034a-C4V3yS3utvn0gF6-5JV-8D9CYUtQJtwm2Oh5AR1KZk2XWgOrxSP6JuiOOATCma0lS6XI2XsxvSbRA_uD1emR0vJK8kjHREm_qqDwT4MfS36Bs2fBswl3UcGQJmXCiBuiR9oyI2V2CyOI_PcepEP95H7EXaWtn4CY38GfSx4kJoerWdPe7IGboV1AB8MQTO_HmWyAENsbh-XzU5p9aAlq_og1YdYrfYxeJjWZNDE63uynsZnD00jqK-VPvz-2dQxFBPBhw
 ```
 
 If you run this again but this time trying to use another role, you will get permission denied as your token does not 
 have access to this policy.
 
 ```
-VAULT_TOKEN=<your_token> vault write kuma-guide/creds/api-role
+vault read kuma-guide/creds/api-role
 ```
 
-## TODO
+```
+Error reading kuma-guide/creds/api-role: Error making API request.
 
-* Show how to compose Vault Template
-* Show how to run Vault Template
-* Start dataplane using the provided token
+URL: GET http://vault.container.shipyard.run:8200/v1/kuma-guide/creds/api-role
+Code: 403. Errors:
 
-That is all for data plane tokens, let's look at how Vault managed token expiry.
+* 1 error occurred:
+        * permission denied
+```
+
+## Pulling this together using Vault Agent
+
+This demonstrates the manual approach for authenticating and creating a token, however you can use Vault Agent to do this automatically 
+for you. Generally Vault Agent is run as a system job on your virtual machine.
+
+To use Vault Agent you need a template, create a new file with the contents of this block
+
+```
+pid_file = "./pidfile"
+
+auto_auth {
+    method {
+        type = "approle"
+
+        config = {
+            role_id_file_path = "/etc/vault/approle/roleid"
+            secret_id_file_path = "/etc/vault/approle/secretid"
+            remove_secret_id_file_after_reading = false
+        }
+    }
+}
+
+template {
+    contents     = "{{ with secret \"kuma-guide/creds/payments-role\" }}{{ .Data.token }}{{ end }}"
+    destination  = "/etc/vault/kuma-dataplane-token"
+} 
+```
+
+```
+nano /etc/vault/agent-config.hcl
+```
+
+You can then start Vault Agent using the following command
+
+```
+/usr/local/bin/vault agent -config=/etc/vault/agent-config.hcl &
+```
+
+Vault Agent will automatically login using the AppRole credentials and will request a Kuma token from Vault. You will see this token has been written
+to the destination defined in the template.
+
+```
+cat /etc/vault/kuma-dataplane-token
+```
+
+## Starting the Dataplane
+
+Now that we have the token, we can start the dataplane and allow it to register the payments service, run the following command in the Payments
+terminal.
+
+```
+/usr/local/bin/kuma-dp run \
+  --cp-address=https://kuma-cp.container.shipyard.run:5678 \
+  --dataplane-file=/config/kuma-dp-config.yml \
+  --dataplane-var address=`hostname -I | awk '{print $1}'` \
+  --dataplane-token=$(cat /etc/vault/kuma-dataplane-token) \
+  --ca-cert-file=/kuma/config/kuma_cp_ca.cert &
+```
+
+If you look at the Kuma Control Panel you will see that the Dataplane has been correctly registered and the service correctly registered.
+
+That is all for data plane tokens, let's look at how Vault manages token expiry and how users can obtain Kuma Control Pane tokens.
 
 <p style={{height: '400px'}}></p>

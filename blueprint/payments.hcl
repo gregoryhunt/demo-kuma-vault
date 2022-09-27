@@ -13,6 +13,13 @@ container "payments" {
         source      = "./configs/payments"
         destination = "/config"
     }
+   
+    # Override the startup script for the guide VM
+    # everything will be manually started
+    volume {
+        source      = "./supervisor/payments"
+        destination = "/etc/supervisor/conf.d"
+    }
 
     volume {
         source      = data("kuma_config")
@@ -24,14 +31,14 @@ container "payments" {
         destination = "/etc/vault/approle"
     }
 
-    volume {
-        source      = data("vault/agent/payments")
-        destination = "/etc/vault"
-    }
-
     env {
         key   = "VAULT_ADDR"
         value = "http://vault.container.shipyard.run:8200"
+    }
+    
+    env {
+        key   = "KUMA_URL"
+        value = "http://kuma-cp.container.shipyard.run:5681"
     }
 
     env {

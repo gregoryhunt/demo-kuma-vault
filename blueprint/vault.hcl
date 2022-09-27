@@ -65,7 +65,58 @@ exec_remote "download_plugins" {
 
 module "vault" {
   depends_on = ["exec_remote.download_plugins"]
-  source = "github.com/shipyard-run/blueprints?ref=144a4b75e44a8471d1f9b30d6f8a30c8d9e05e7e/modules//vault-dev"
+  source = "github.com/shipyard-run/blueprints?ref=6aeee3845af9c12a4b362bbc44bd7c322bf634a6/modules//vault-dev"
+}
+
+
+template "vault-policy-kong" {
+  source = <<-EOF
+  path "kuma/creds/kong-role" {
+    capabilities = ["read"]
+  }
+  EOF
+
+  destination = "${data("vault_config/policies")}/kong.hcl"
+}
+
+template "vault-policy-api" {
+  source = <<-EOF
+  path "kuma/creds/api-role" {
+    capabilities = ["read"]
+  }
+  EOF
+
+  destination = "${data("vault_config/policies")}/api.hcl"
+}
+
+template "vault-policy-database" {
+  source = <<-EOF
+  path "kuma/creds/database-role" {
+    capabilities = ["read"]
+  }
+  EOF
+
+  destination = "${data("vault_config/policies")}/database.hcl"
+}
+
+template "vault-policy-kuma-admins" {
+  source = <<-EOF
+  path "kuma/creds/kuma-admin-role" {
+    capabilities = ["read"]
+  }
+  EOF
+
+  destination = "${data("vault_config/policies")}/kuma_admin.hcl"
+}
+
+template "vault-policy-kuma-admins-short" {
+  source = <<-EOF
+  path "kuma/creds/kuma-admin-role-short-ttl" {
+    capabilities = ["read"]
+  }
+  EOF
+
+  destination = "${data("vault_config/policies")}/kuma_admin_short_ttl.hcl"
 }
 
 template "vault-config-script" {
@@ -107,6 +158,13 @@ template "vault-config-script" {
     max_ttl=24h \
     groups="mesh-system:admin"
   
+  vault write kuma/roles/kuma-admin-role-short-ttl \
+    token_name=tom \
+    mesh=default \
+    ttl=1m \
+    max_ttl=5m \
+    groups="mesh-system:admin"
+  
   # App Role Config
   
   vault auth enable approle
@@ -146,9 +204,11 @@ template "vault-config-script" {
   vault read auth/approle/role/database-role/role-id -format=json | jq -r .data.role_id >> /config/database/approle/roleid
   
   vault write -f auth/approle/role/database-role/secret-id -format=json | jq -r .data.secret_id >> /config/database/approle/secretid
- 
+
+
   # Generate the user and pass for the Payments service, this is used by the guide, policy and other elements are created
   # by the end user
+  
   vault write auth/approle/role/payments-role \
     token_ttl=30m \
     token_max_ttl=60m \
@@ -167,51 +227,16 @@ template "vault-config-script" {
     password=secret123 \
     policies=kuma-admins
   
+  vault write auth/userpass/users/tom \
+    password=secret123 \
+    policies=kuma-admins-short-ttl
+  
   vault policy write kuma-admins /config/vault/polices/kuma_admin.hcl
+  vault policy write kuma-admins-short-ttl /config/vault/polices/kuma_admin_short_ttl.hcl
   
   EOF
 
   destination = "${data("vault_config/scripts")}/config-kuma-vault.sh"
-}
-
-template "vault-policy-kong" {
-  source = <<-EOF
-  path "kuma/creds/kong-role" {
-    capabilities = ["read"]
-  }
-  EOF
-
-  destination = "${data("vault_config/policies")}/kong.hcl"
-}
-
-template "vault-policy-api" {
-  source = <<-EOF
-  path "kuma/creds/api-role" {
-    capabilities = ["read"]
-  }
-  EOF
-
-  destination = "${data("vault_config/policies")}/api.hcl"
-}
-
-template "vault-policy-database" {
-  source = <<-EOF
-  path "kuma/creds/database-role" {
-    capabilities = ["read"]
-  }
-  EOF
-
-  destination = "${data("vault_config/policies")}/database.hcl"
-}
-
-template "vault-policy-kuma-admins" {
-  source = <<-EOF
-  path "kuma/creds/kuma-admin-role" {
-    capabilities = ["read"]
-  }
-  EOF
-
-  destination = "${data("vault_config/policies")}/kuma_admin.hcl"
 }
 
 container "vault_client" {
