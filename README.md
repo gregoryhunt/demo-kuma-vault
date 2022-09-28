@@ -1,5 +1,5 @@
-# demo-kuma-vault
-Demo for leveraging Hashicorp Vault to manage Tokens in Kuma
+# Kong Summit 2022 - Kuma/Vault Demo
+Demo for leveraging HashiCorp Vault to manage Tokens in Kuma
 
 ## Running the Demo Application
 
