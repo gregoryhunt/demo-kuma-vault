@@ -52,11 +52,19 @@ curl ${KUMA_URL}/meshes/defaults/secrets \
   -H "authorization: Bearer $(cat /kuma.token)"
 ```
 
+```
+{
+ "total": 0,
+ "items": [],
+ "next": null
+}
+```
+
 The first time you run this it should work fine, this is because the token is still valid, however if you wait 1m Vault will automatically add 
 the token to Kumas Revocation list, automatically expiring the token.
 
 ```
-curl ${KUMA_URL}/meshes/defaults/secrets \
+curl ${KUMA_URL}/meshes/default/secrets \
   -H "authorization: Bearer $(cat /kuma.token)"
 ```
 
@@ -66,6 +74,24 @@ curl ${KUMA_URL}/meshes/defaults/secrets \
  "details": "Unauthenticated"
 }
 ```
+
+When a token is revoked it is automatically added to the revocation list
+
+```
+curl ${KUMA_URL}/global-secrets/user-token-revocations  \
+  -H "authorization: Bearer $(cat /kuma.token)" \
+  | jq -r .data \
+  | base64 -d
+```
+
+If you decode the list you will see the jti's as a comma separated list. Vault will automatically clean up this list once the TTL on the original token expires.
+
+```
+cb269cc9-d348-429b-8efb-0a914d9364d9,789f31c1-1c1d-4f1a-89d2-bd75dfb61460,0437d4e6-531c-4a21-a290-4e46d70b10e7,1f4f4ab5-ce9
+```
+
+As an operator Vault you can manually revoke a token at any time, if you realise something has leaked then 
+this capability allows you to revoke  things.
 
 ## TODO: 
 * Show revocation list

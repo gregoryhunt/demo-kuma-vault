@@ -1,0 +1,9 @@
+contexts:
+- controlPlane: local
+  name: local
+controlPlanes:
+- coordinates:
+    apiServer:
+      url: http://kuma-cp.container.shipyard.run:5681
+  name: local
+currentContext: local
