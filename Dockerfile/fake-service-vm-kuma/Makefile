@@ -1,5 +1,5 @@
 repository=gregoryhunt/kuma-dp-vault
-version=v0.1.3
+version=v0.1.4
 
 build:
 	docker buildx create --use

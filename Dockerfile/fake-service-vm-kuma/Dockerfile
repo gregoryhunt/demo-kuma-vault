@@ -22,5 +22,7 @@ RUN cd /tmp && \
 curl -O -L https://download.konghq.com/mesh-alpine/kuma-${KUMA_VERSION}-ubuntu-${TARGETARCH}.tar.gz && \
 tar --extract --strip-components=2 --file=kuma-${KUMA_VERSION}-ubuntu-${TARGETARCH}.tar.gz kuma-${KUMA_VERSION}/bin/kuma-dp && \
 tar --extract --strip-components=2 --file=kuma-${KUMA_VERSION}-ubuntu-${TARGETARCH}.tar.gz kuma-${KUMA_VERSION}/bin/coredns && \
+tar --extract --strip-components=2 --file=kuma-${KUMA_VERSION}-ubuntu-${TARGETARCH}.tar.gz kuma-${KUMA_VERSION}/bin/kumactl && \
 mv /tmp/kuma-dp /usr/local/bin/ && \
-mv /tmp/coredns /usr/local/bin/
+mv /tmp/coredns /usr/local/bin/ && \
+mv /tmp/kumactl /usr/local/bin/

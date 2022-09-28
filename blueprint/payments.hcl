@@ -6,7 +6,7 @@ container "payments" {
     }
 
     image {
-        name = "gregoryhunt/kuma-dp-vault:v0.1.3"
+        name = "gregoryhunt/kuma-dp-vault:v0.1.4"
     }
 
     volume {
