@@ -92,11 +92,3 @@ cb269cc9-d348-429b-8efb-0a914d9364d9,789f31c1-1c1d-4f1a-89d2-bd75dfb61460,0437d4
 
 As an operator Vault you can manually revoke a token at any time, if you realise something has leaked then 
 this capability allows you to revoke  things.
-
-## TODO: 
-* Show revocation list
-* Explain revocation mechanism and token renewal, max ttl is the token max, ttl is your lease on the token, if tokens are not renewed, they are
-revoked.
-
-Using this approach you can worry less about leaking control pane tokens as you are using short time to live, the exact same approach applies
-for the control pane tokens that we saw in a previous section.
