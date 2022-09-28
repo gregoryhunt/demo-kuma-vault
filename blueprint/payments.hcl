@@ -20,6 +20,11 @@ container "payments" {
         source      = "./supervisor/payments"
         destination = "/etc/supervisor/conf.d"
     }
+    
+    volume {
+        source      = "./configs/payments/kumactl-config.yaml"
+        destination = "/.kumactl/config"
+    }
 
     volume {
         source      = data("kuma_config")
