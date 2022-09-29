@@ -153,8 +153,8 @@ If you decode the list you will see the JTI's as a comma separated list. Vault w
 cb269cc9-d348-429b-8efb-0a914d9364d9,789f31c1-1c1d-4f1a-89d2-bd75dfb61460,0437d4e6-531c-4a21-a290-4e46d70b10e7,1f4f4ab5-ce9
 ```
 
-As an operator Vault you can manually revoke a token at any time, if you realise something has leaked then 
-this capability allows you to revoke things. For more information on this capability please see the Vault documentation.
+As an operator Vault you can manually revoke a token at any time, if you realise something has leaked then this capability 
+allows you to revoke things. For more information on this capability please see the Vault documentation.
 
 [https://www.vaultproject.io/docs/concepts/lease](https://www.vaultproject.io/docs/concepts/lease)
 
