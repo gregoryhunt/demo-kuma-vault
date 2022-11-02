@@ -20,7 +20,7 @@ kuma admin permissions, to illustrate token expiry we are also setting a really 
 <TerminalRunCommand target="vault-client">
   <Command>vault write auth/userpass/users/tom \
   password=secret123 \
-  policies=kuma-admin-short-ttl</Command>
+  policies=kuma-admins-short-ttl</Command>
 </TerminalRunCommand>
 
 ```
