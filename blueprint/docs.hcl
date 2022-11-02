@@ -4,7 +4,7 @@ docs "docs" {
 
   path = "./docs"
 
-  index_title = "Consul"
+  index_title = "Vault Plugin - Kuma"
 
   image {
     name = "shipyardrun/docs:v0.5.1"
